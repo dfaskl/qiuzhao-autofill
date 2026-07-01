@@ -156,5 +156,5 @@ chrome.commands.onCommand.addListener(async (command) => {
 // ============================================================
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('[秋招自动填写] Extension installed');
+  console.log('[秋招自动填写] Extension installed/updated — 已打开的网页需要按 F5 刷新');
 });

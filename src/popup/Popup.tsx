@@ -63,7 +63,7 @@ const Popup: React.FC = () => {
 
       // Translate connection errors to Chinese
       if (msg.includes('Could not establish connection') || msg.includes('Receiving end does not exist')) {
-        msg = '无法连接到页面，请刷新页面后重试';
+        msg = '请在招聘网页上按 F5 刷新页面后重试\n（Chrome 刷新扩展后需要刷新网页才能生效）';
       }
 
       setErrorMsg(msg);
