@@ -65,7 +65,7 @@ async function handleFillForm(): Promise<{ success: boolean; data?: FillResult; 
     console.log('[Content] LLM matched:', matchResult.matches.length, 'unmatched:', matchResult.unmatched.length);
 
     // 3. Fill matched fields
-    const filledCount = fillFields(matchResult.matches, visibleFields);
+    const filledCount = await fillFields(matchResult.matches, visibleFields);
     console.log(`[Content] Filled ${filledCount} fields`);
 
     // 4. Show result overlay

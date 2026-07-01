@@ -4,7 +4,7 @@ import type { FieldMatch, FieldDescriptor } from '../shared/types';
  * Fill form fields based on LLM matching results.
  * Handles native HTML inputs and dispatches framework-compatible events.
  */
-export function fillFields(matches: FieldMatch[], _fields: FieldDescriptor[]): number {
+export async function fillFields(matches: FieldMatch[], _fields: FieldDescriptor[]): Promise<number> {
   let filledCount = 0;
 
   for (const match of matches) {
@@ -13,7 +13,7 @@ export function fillFields(matches: FieldMatch[], _fields: FieldDescriptor[]): n
       if (elements.length === 0) continue;
 
       for (const element of elements) {
-        const filled = fillSingleField(element, match.value);
+        const filled = await fillSingleField(element, match.value);
         if (filled) {
           filledCount++;
           break; // Only count once per match
@@ -53,7 +53,12 @@ function findElementsBySelector(selectorStr: string): HTMLElement[] {
 /**
  * Fill a single form element with the given value.
  */
-function fillSingleField(element: HTMLElement, value: string): boolean {
+async function fillSingleField(element: HTMLElement, value: string): Promise<boolean> {
+  // Check for custom UI library select (Ant Design / Element UI)
+  if (element.hasAttribute('data-qz-custom-select')) {
+    return fillCustomSelect(element, value);
+  }
+
   const tagName = element.tagName;
 
   if (tagName === 'INPUT') {
@@ -156,6 +161,105 @@ function fillSelect(select: HTMLSelectElement, value: string): boolean {
   }
 
   return false;
+}
+
+// ============================================================
+// Custom UI Library Select Filling (Ant Design / Element UI)
+// ============================================================
+
+async function fillCustomSelect(wrapper: HTMLElement, value: string): Promise<boolean> {
+  const isAntd = wrapper.className.includes('ant-select');
+  const isElementUI = wrapper.className.includes('el-select');
+
+  if (!isAntd && !isElementUI) return false;
+
+  try {
+    // 1. Click the wrapper to open the dropdown
+    const clickTarget = wrapper.querySelector('.ant-select-selector, .el-select__wrapper, .el-select__tags')
+      || wrapper.querySelector('.ant-select-selection')
+      || wrapper;
+    (clickTarget as HTMLElement).click();
+
+    // 2. Wait for dropdown to appear
+    await sleep(200);
+
+    // 3. Find the matching option in the dropdown
+    let option: HTMLElement | null = null;
+
+    if (isAntd) {
+      // Ant Design dropdown options
+      const dropdowns = document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+      for (const dropdown of dropdowns) {
+        const items = dropdown.querySelectorAll('.ant-select-item-option, .ant-select-item');
+        for (const item of items) {
+          const text = item.textContent?.trim() || '';
+          if (text === value || text.includes(value) || value.includes(text)) {
+            option = item as HTMLElement;
+            break;
+          }
+        }
+        if (option) break;
+
+        // Try case-insensitive
+        for (const item of items) {
+          const text = item.textContent?.trim().toLowerCase() || '';
+          if (text === value.toLowerCase()) {
+            option = item as HTMLElement;
+            break;
+          }
+        }
+        if (option) break;
+      }
+    } else if (isElementUI) {
+      const poppers = document.querySelectorAll('.el-select-dropdown, .el-popper:not(.is-hidden)');
+      for (const popper of poppers) {
+        const items = popper.querySelectorAll('.el-select-dropdown__item');
+        for (const item of items) {
+          const text = item.textContent?.trim() || '';
+          if (text === value || text.includes(value) || value.includes(text)) {
+            option = item as HTMLElement;
+            break;
+          }
+        }
+        if (option) break;
+      }
+    }
+
+    // 4. Click the matched option
+    if (option) {
+      option.click();
+      await sleep(100);
+      return true;
+    }
+
+    // 5. If no option found, try typing the value (some selects support search)
+    const inputEl = wrapper.querySelector('input');
+    if (inputEl) {
+      setNativeValue(inputEl as HTMLInputElement, value);
+      dispatchEvents(inputEl as HTMLElement);
+      await sleep(300);
+
+      // Press Enter to select
+      inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
+      await sleep(100);
+      return true;
+    }
+
+    // 6. Close dropdown by clicking elsewhere
+    document.body.click();
+    await sleep(100);
+
+    return false;
+  } catch (e) {
+    console.warn('[Filler] Custom select fill failed:', e);
+    // Close dropdown
+    document.body.click();
+    return false;
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ============================================================

@@ -30,8 +30,176 @@ export function scanFormFields(): FieldDescriptor[] {
     }
   }
 
+  // Scan UI library select components (Ant Design, Element UI)
+  // These use div-based dropdowns and hide the native <select>
+  scanCustomSelects(fields, seen);
+
   return fields;
 }
+
+// ============================================================
+// Custom UI Library Select Scanning
+// ============================================================
+
+function scanCustomSelects(fields: FieldDescriptor[], seen: Set<HTMLElement>): void {
+  // Ant Design Select: .ant-select without a native <select> inside
+  // Element UI Select: .el-select without a native <select> inside
+  const wrappers = document.querySelectorAll('.ant-select:not(:has(select)), .el-select:not(:has(select))');
+
+  for (const wrapper of wrappers) {
+    const el = wrapper as HTMLElement;
+
+    // Skip if already covered by a native select inside
+    if (el.querySelector('select')) continue;
+    if (seen.has(el)) continue;
+
+    // Check visibility
+    const style = window.getComputedStyle(el);
+    const rect = el.getBoundingClientRect();
+    if (style.display === 'none' || style.visibility === 'hidden' || rect.width === 0) continue;
+
+    seen.add(el);
+
+    const field = buildCustomSelectDescriptor(el);
+    if (field) {
+      fields.push(field);
+    }
+  }
+}
+
+function buildCustomSelectDescriptor(wrapper: HTMLElement): FieldDescriptor | null {
+  // Determine library
+  const isAntd = wrapper.className.includes('ant-select');
+  const isElementUI = wrapper.className.includes('el-select');
+
+  // Resolve label from form item wrapper
+  const formItem = wrapper.closest('.ant-form-item, .el-form-item, .form-item, .form-group');
+  let label = '';
+  if (formItem) {
+    const labelEl = formItem.querySelector('.ant-form-item-label, .el-form-item__label, .form-label, label');
+    if (labelEl) {
+      label = getCleanText(labelEl);
+    }
+  }
+  if (!label) {
+    label = resolveLabel(wrapper);
+  }
+
+  // Get placeholder text
+  const placeholderEl = wrapper.querySelector('.ant-select-selection-placeholder, .el-select__placeholder, .ant-select-selection__placeholder');
+  const placeholder = placeholderEl?.textContent?.trim() || null;
+
+  // Get current value text
+  const currentValueEl = wrapper.querySelector('.ant-select-selection-item, .el-select__selected-item');
+  const currentValue = currentValueEl?.textContent?.trim() || null;
+
+  // Try to find options — they might be in a dropdown container in the DOM
+  let options: string[] = [];
+
+  if (isAntd) {
+    // Ant Design renders options in a portal dropdown, or as ant-select-item-option children
+    // v5: options might be in .ant-select-item-option-content or .rc-virtual-list-holder
+    options = extractAntdOptions(wrapper);
+  } else if (isElementUI) {
+    options = extractElementUIOptions(wrapper);
+  }
+
+  // If we have a current value, include it in options
+  if (currentValue && !options.includes(currentValue)) {
+    options.unshift(currentValue);
+  }
+
+  // Build selectors for the filler
+  const selectors: string[] = [];
+
+  // Include the wrapper itself with a special marker for the filler
+  selectors.push(`[data-qz-custom-select="${wrapper.getAttribute('data-qz-custom-select') || ''}"]`);
+
+  // Set a data attribute for re-identification during fill
+  const markerId = `qz-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  wrapper.setAttribute('data-qz-custom-select', markerId);
+  selectors[0] = `[data-qz-custom-select="${markerId}"]`;
+
+  // Also try to find by class + position
+  const cssPath = buildCssPath(wrapper);
+  if (cssPath) selectors.push(cssPath);
+
+  // Context
+  const contextText = extractContext(wrapper);
+  const sectionHeading = extractSectionHeading(wrapper);
+
+  // Check if required
+  const isRequired = checkIsRequired(wrapper);
+
+  return {
+    id: generateId(),
+    domSelector: selectors.join(' | '),
+    tagName: 'INPUT', // Treat as input for filler purposes
+    inputType: options.length > 0 ? 'select-one' : 'select-one',
+    label: label || placeholder || '选择框',
+    placeholder,
+    options,
+    contextText,
+    sectionHeading,
+    isRequired,
+    visible: true,
+  };
+}
+
+function extractAntdOptions(wrapper: HTMLElement): string[] {
+  const options: string[] = [];
+
+  // Check if options are rendered as children (Ant Design v4/v5 with options prop as children)
+  const optionEls = wrapper.querySelectorAll('.ant-select-item-option-content, .ant-select-item-option');
+  for (const opt of optionEls) {
+    const text = opt.textContent?.trim();
+    if (text && !options.includes(text)) options.push(text);
+  }
+
+  // Try portal dropdown (attached to body)
+  const dropdowns = document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
+  for (const dropdown of dropdowns) {
+    const items = dropdown.querySelectorAll('.ant-select-item-option-content, .ant-select-item');
+    for (const item of items) {
+      const text = item.textContent?.trim();
+      if (text && !options.includes(text)) options.push(text);
+    }
+  }
+
+  // Try hidden dropdowns too (they might just be display:none)
+  if (options.length === 0) {
+    const allDropdowns = document.querySelectorAll('.ant-select-dropdown');
+    for (const dropdown of allDropdowns) {
+      const items = dropdown.querySelectorAll('.ant-select-item-option-content, .ant-select-item');
+      for (const item of items) {
+        const text = item.textContent?.trim();
+        if (text && !options.includes(text)) options.push(text);
+      }
+    }
+  }
+
+  return options;
+}
+
+function extractElementUIOptions(wrapper: HTMLElement): string[] {
+  const options: string[] = [];
+
+  // Element UI renders options in a popper
+  const poppers = document.querySelectorAll('.el-select-dropdown, .el-popper');
+  for (const popper of poppers) {
+    const items = popper.querySelectorAll('.el-select-dropdown__item');
+    for (const item of items) {
+      const text = item.textContent?.trim();
+      if (text && !options.includes(text)) options.push(text);
+    }
+  }
+
+  return options;
+}
+
+// ============================================================
+// Native Element Field Descriptor
+// ============================================================
 
 function buildFieldDescriptor(element: HTMLElement): FieldDescriptor | null {
   const tagName = element.tagName as 'INPUT' | 'SELECT' | 'TEXTAREA';
