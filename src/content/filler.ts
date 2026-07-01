@@ -134,8 +134,7 @@ function fillInput(input: HTMLInputElement, value: string): boolean {
     case 'search':
     default: {
       if (!value) return false;
-      setNativeValue(input, value);
-      dispatchEvents(input);
+      fillTextInput(input, value);
       return true;
     }
   }
@@ -313,8 +312,7 @@ function sleep(ms: number): Promise<void> {
 
 function fillTextarea(textarea: HTMLTextAreaElement, value: string): boolean {
   if (!value) return false;
-  setNativeValue(textarea, value);
-  dispatchEvents(textarea);
+  fillTextInput(textarea, value);
   return true;
 }
 
@@ -361,17 +359,16 @@ function selectRadio(radio: HTMLInputElement, value: string): boolean {
 // Value Setting Helpers
 // ============================================================
 
+/**
+ * Set value on an input/textarea bypassing React's value override.
+ */
 function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
-  // React overrides the 'value' property on the element instance itself.
-  // We need to bypass React's override by using the native setter from the
-  // HTMLInputElement/HTMLTextAreaElement prototype.
   const tag = element.tagName.toLowerCase();
   const proto = tag === 'textarea'
     ? window.HTMLTextAreaElement.prototype
     : window.HTMLInputElement.prototype;
 
   const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-
   if (nativeSetter) {
     nativeSetter.call(element, value);
   } else {
@@ -379,28 +376,60 @@ function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: 
   }
 }
 
-function dispatchEvents(element: HTMLElement): void {
-  // Focus first to trigger any focus-dependent behavior
+/**
+ * Fill a text input using the most React-compatible approach.
+ * Tries native setter + events first, then falls back to
+ * document.execCommand('insertText') which simulates real typing.
+ */
+function fillTextInput(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
+  // Step 1: Focus and select all existing content
   element.focus();
+  element.select();
 
-  // For React: use InputEvent with inputType for text inputs.
-  // React's synthetic event system listens for 'input' events on the root
-  // and reads event.target.value to update its internal state.
-  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-    // InputEvent with 'insertText' type is the most reliable for React
-    element.dispatchEvent(new InputEvent('input', {
-      bubbles: true,
-      cancelable: true,
-      inputType: 'insertText',
-      data: element instanceof HTMLInputElement ? element.value : undefined,
-    }));
-  } else {
-    element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+  // Step 2: Use native setter to set the value
+  setNativeValue(element, value);
+
+  // Step 3a: Try execCommand — this is the most React-compatible approach
+  // because it actually modifies the DOM through the browser's editing pipeline,
+  // which React's synthetic event system intercepts.
+  try {
+    // Select all first, then "type" the new value
+    element.select();
+    const success = document.execCommand('insertText', false, value);
+    if (!success) {
+      // execCommand failed (e.g., element doesn't support text insertion)
+      // Fall through to event approach
+    }
+  } catch {
+    // execCommand may throw on some elements, ignore
   }
 
-  // Change event triggers validation in many frameworks
-  element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+  // Step 4: Dispatch comprehensive events
+  // InputEvent — React's primary event for controlled inputs
+  element.dispatchEvent(new InputEvent('input', {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    inputType: 'insertText',
+    data: value,
+  }));
 
-  // Blur to commit the value in some component libraries
+  // Plain Event fallback
+  element.dispatchEvent(new Event('input', { bubbles: true }));
+
+  // Change event
+  element.dispatchEvent(new Event('change', { bubbles: true }));
+
+  // Step 5: Blur to commit
+  element.blur();
+}
+
+/**
+ * Dispatch events for non-text elements (select, radio, checkbox)
+ */
+function dispatchEvents(element: HTMLElement): void {
+  element.focus();
+  element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+  element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
   element.blur();
 }
