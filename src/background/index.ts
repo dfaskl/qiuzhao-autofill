@@ -57,6 +57,23 @@ async function handleMessage(
         return { success: false, error: '无法读取个人信息，请先在选项页面中填写' };
       }
 
+      // Verify profile has actual data (not just default nulls)
+      const p = profileRes.data;
+      const isEmpty = !p.basic.nameZh && !p.basic.phone && !p.basic.email;
+      console.log('[Background] Profile loaded:', {
+        nameZh: p.basic.nameZh,
+        phone: p.basic.phone,
+        email: p.basic.email,
+        isEmpty,
+      });
+
+      if (isEmpty) {
+        return {
+          success: false,
+          error: '个人信息为空！请点击扩展图标 → 打开设置 → 填写基本信息（至少填写姓名/手机号/邮箱），或导入之前导出的 JSON 文件',
+        };
+      }
+
       // Get settings
       const settingsRes = await getSettings();
       if (!settingsRes.success || !settingsRes.data) {
