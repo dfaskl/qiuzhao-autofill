@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import type { FillResult } from '../shared/types';
+import type { MessageResponse } from '../shared/messages';
+import { sendTabMessageWithRetry } from '../shared/utils';
 
 type Status = 'idle' | 'scanning' | 'filling' | 'done' | 'error';
 
@@ -45,7 +47,15 @@ const Popup: React.FC = () => {
         throw new Error('无法获取当前标签页');
       }
 
-      const response = await chrome.tabs.sendMessage(tab.id, { type: 'FILL_FORM' });
+      // Check URL — content scripts can't run on chrome:// pages
+      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
+        throw new Error('无法在此页面运行（Chrome 内部页面不支持）\n请切换到招聘网站页面后重试');
+      }
+
+      const response = await sendTabMessageWithRetry<MessageResponse<FillResult>>(
+        tab.id,
+        { type: 'FILL_FORM' }
+      );
 
       if (response?.success && response.data) {
         setLastResult(response.data);
@@ -54,7 +64,13 @@ const Popup: React.FC = () => {
         throw new Error(response?.error || '填写失败');
       }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
+      let msg = e instanceof Error ? e.message : String(e);
+
+      // Translate connection errors to Chinese
+      if (msg.includes('Could not establish connection') || msg.includes('Receiving end does not exist')) {
+        msg = '无法连接到页面，请刷新页面后重试';
+      }
+
       setErrorMsg(msg);
       setStatus('error');
     }

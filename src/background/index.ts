@@ -1,5 +1,6 @@
 import type { BackgroundMessage } from '../shared/messages';
 import type { FillResult } from '../shared/types';
+import { sendTabMessageWithRetry } from '../shared/utils';
 import { getProfile, setProfile, getSettings, setSettings, addFillHistory, getFillHistory, clearFillHistory } from './storage';
 import { matchFields } from './field-matcher';
 import { testLLMConnection } from './llm-client';
@@ -119,10 +120,16 @@ chrome.commands.onCommand.addListener(async (command) => {
   if (command === 'fill-form') {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id) {
-      chrome.tabs.sendMessage(tab.id, { type: 'FILL_FORM' }).catch(() => {
-        // Content script might not be ready on this page
-        console.log('[Background] Failed to send FILL_FORM to tab', tab.id);
-      });
+      // Skip chrome:// pages
+      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
+        console.log('[Background] Cannot run on chrome:// pages');
+        return;
+      }
+      try {
+        await sendTabMessageWithRetry(tab.id, { type: 'FILL_FORM' });
+      } catch (e) {
+        console.log('[Background] Failed to send FILL_FORM to tab', tab.id, e);
+      }
     }
   }
 });

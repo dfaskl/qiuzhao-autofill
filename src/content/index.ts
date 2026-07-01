@@ -1,5 +1,7 @@
 import type { ContentScriptMessage } from '../shared/messages';
-import type { FillResult } from '../shared/types';
+import type { FillResult, LLMMatchResult } from '../shared/types';
+import type { MessageResponse } from '../shared/messages';
+import { sendMessageWithRetry } from '../shared/utils';
 import { scanFormFields } from './scanner';
 import { fillFields } from './filler';
 import { showFillResult, removeOverlay } from './overlay';
@@ -48,8 +50,8 @@ async function handleFillForm(): Promise<{ success: boolean; data?: FillResult; 
     // Debug: log found fields
     console.log('[Content] Fields:', visibleFields.map((f) => ({ label: f.label, type: f.inputType, section: f.sectionHeading })));
 
-    // 2. Send to background for LLM matching
-    const response = await chrome.runtime.sendMessage({
+    // 2. Send to background for LLM matching (with retry for SW wake-up)
+    const response = await sendMessageWithRetry<MessageResponse<LLMMatchResult>>({
       type: 'MATCH_FIELDS',
       payload: {
         url: window.location.href,
@@ -57,7 +59,7 @@ async function handleFillForm(): Promise<{ success: boolean; data?: FillResult; 
       },
     });
 
-    if (!response.success) {
+    if (!response.success || !response.data) {
       throw new Error(response.error || 'LLM matching failed');
     }
 
