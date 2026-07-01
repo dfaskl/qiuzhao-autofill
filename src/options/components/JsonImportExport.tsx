@@ -27,23 +27,41 @@ const JsonImportExport: React.FC<Props> = ({ profile, onImport }) => {
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = (event) => {
+      reader.onload = async (event) => {
         try {
           const data = JSON.parse(event.target?.result as string);
 
-          // Basic validation
-          if (!data.basic && !data.education && !data.experience && !data.other) {
-            alert('导入失败：JSON 格式不正确，缺少 basic/education/experience/other 字段');
+          // Basic validation — check for any known profile section
+          const hasAnySection = data.basic || data.education || data.internships || data.projects || data.experience || data.other;
+          if (!hasAnySection) {
+            alert('导入失败：JSON 格式不正确，缺少 profile 数据');
             return;
+          }
+
+          // Migrate old 'experience' field to 'internships' if needed
+          if (data.experience && !data.internships) {
+            data.internships = data.experience;
+            delete data.experience;
+            data.projects = data.projects || [];
           }
 
           // Ensure version
           if (!data.version) data.version = 2;
           if (!data.lastModified) data.lastModified = new Date().toISOString();
 
-          onImport(data as Profile);
-          alert('导入成功！个人信息已更新。');
-        } catch {
+          // Save DIRECTLY to chrome.storage (bypass React state + debounce delay)
+          const saveRes = await chrome.runtime.sendMessage({
+            type: 'SET_PROFILE',
+            payload: { profile: data },
+          });
+
+          if (saveRes.success) {
+            onImport(data as Profile);
+            alert('导入成功！个人信息已更新。');
+          } else {
+            alert('导入失败：' + (saveRes.error || '保存出错'));
+          }
+        } catch (err) {
           alert('导入失败：无法解析 JSON 文件，请检查格式。');
         }
       };
