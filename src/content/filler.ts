@@ -145,36 +145,64 @@ function fillInput(input: HTMLInputElement, value: string): boolean {
 // Select Filling
 // ============================================================
 
-function fillSelect(select: HTMLSelectElement, value: string): boolean {
+async function fillSelect(select: HTMLSelectElement, value: string): Promise<boolean> {
   // Try exact match first
+  let matched = false;
   for (const option of select.options) {
     if (option.value === value || option.textContent?.trim() === value) {
       select.value = option.value;
-      dispatchEvents(select);
-      return true;
+      matched = true;
+      break;
     }
   }
 
   // Try case-insensitive match
-  for (const option of select.options) {
-    if (
-      option.value.toLowerCase() === value.toLowerCase() ||
-      option.textContent?.trim().toLowerCase() === value.toLowerCase()
-    ) {
-      select.value = option.value;
-      dispatchEvents(select);
-      return true;
+  if (!matched) {
+    for (const option of select.options) {
+      if (
+        option.value.toLowerCase() === value.toLowerCase() ||
+        option.textContent?.trim().toLowerCase() === value.toLowerCase()
+      ) {
+        select.value = option.value;
+        matched = true;
+        break;
+      }
     }
   }
 
   // Try partial match (for long option texts)
-  for (const option of select.options) {
-    const optionText = option.textContent?.trim() || '';
-    if (optionText.includes(value) || value.includes(optionText)) {
-      select.value = option.value;
-      dispatchEvents(select);
-      return true;
+  if (!matched) {
+    for (const option of select.options) {
+      const optionText = option.textContent?.trim() || '';
+      if (optionText.includes(value) || value.includes(optionText)) {
+        select.value = option.value;
+        matched = true;
+        break;
+      }
     }
+  }
+
+  if (matched) {
+    dispatchEvents(select);
+
+    // If this select is inside an Ant Design / Element UI wrapper,
+    // the native select is hidden. Try to update the visible component too.
+    const uiWrapper = select.closest('.ant-select, .el-select');
+    if (uiWrapper) {
+      // For Ant Design: try to find and update the selection item display
+      const antDisplay = uiWrapper.querySelector('.ant-select-selection-item');
+      if (antDisplay) {
+        antDisplay.textContent = value;
+        antDisplay.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+      // For Element UI
+      const elDisplay = uiWrapper.querySelector('.el-select__selected-item');
+      if (elDisplay) {
+        elDisplay.textContent = value;
+        elDisplay.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    }
+    return true;
   }
 
   return false;
@@ -334,11 +362,15 @@ function selectRadio(radio: HTMLInputElement, value: string): boolean {
 // ============================================================
 
 function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: string): void {
-  // Use native setter to trigger React's internal value tracking
-  const nativeSetter = Object.getOwnPropertyDescriptor(
-    Object.getPrototypeOf(element),
-    'value'
-  )?.set;
+  // React overrides the 'value' property on the element instance itself.
+  // We need to bypass React's override by using the native setter from the
+  // HTMLInputElement/HTMLTextAreaElement prototype.
+  const tag = element.tagName.toLowerCase();
+  const proto = tag === 'textarea'
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
+
+  const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
 
   if (nativeSetter) {
     nativeSetter.call(element, value);
@@ -348,18 +380,27 @@ function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: 
 }
 
 function dispatchEvents(element: HTMLElement): void {
-  // Order: input → change → focus → blur
-  // This covers React, Vue, Angular, and most UI libraries
-  const events: Event[] = [
-    new Event('input', { bubbles: true, cancelable: true }),
-    new Event('change', { bubbles: true, cancelable: true }),
-  ];
+  // Focus first to trigger any focus-dependent behavior
+  element.focus();
 
-  for (const event of events) {
-    element.dispatchEvent(event);
+  // For React: use InputEvent with inputType for text inputs.
+  // React's synthetic event system listens for 'input' events on the root
+  // and reads event.target.value to update its internal state.
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    // InputEvent with 'insertText' type is the most reliable for React
+    element.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      cancelable: true,
+      inputType: 'insertText',
+      data: element instanceof HTMLInputElement ? element.value : undefined,
+    }));
+  } else {
+    element.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
   }
 
-  // Focus + blur to trigger validation / commit in some libraries
-  element.dispatchEvent(new FocusEvent('focus', { bubbles: true }));
-  element.dispatchEvent(new FocusEvent('blur', { bubbles: true }));
+  // Change event triggers validation in many frameworks
+  element.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+
+  // Blur to commit the value in some component libraries
+  element.blur();
 }
