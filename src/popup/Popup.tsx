@@ -47,11 +47,6 @@ const Popup: React.FC = () => {
         throw new Error('无法获取当前标签页');
       }
 
-      // Check URL — content scripts can't run on chrome:// pages
-      if (tab.url?.startsWith('chrome://') || tab.url?.startsWith('chrome-extension://')) {
-        throw new Error('无法在此页面运行（Chrome 内部页面不支持）\n请切换到招聘网站页面后重试');
-      }
-
       const response = await sendTabMessageWithRetry<MessageResponse<FillResult>>(
         tab.id,
         { type: 'FILL_FORM' }
