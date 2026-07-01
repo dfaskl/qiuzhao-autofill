@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.vite/
+*.log
+.DS_Store
+Thumbs.db
+
+# Personal data - never commit
+*profile*.json
+*-profile*.json
+qiuzhao-*.json
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Claude Code local settings
+.claude/
+
+# OS
+Desktop.ini
