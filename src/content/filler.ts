@@ -214,59 +214,69 @@ async function fillSelect(select: HTMLSelectElement, value: string): Promise<boo
 async function fillCustomSelect(wrapper: HTMLElement, value: string): Promise<boolean> {
   const isAntd = wrapper.className.includes('ant-select');
   const isElementUI = wrapper.className.includes('el-select');
+  const isPhoenix = wrapper.className.includes('phoenix-select');
 
-  if (!isAntd && !isElementUI) return false;
+  if (!isAntd && !isElementUI && !isPhoenix) return false;
 
   try {
     // 1. Click the wrapper to open the dropdown
-    const clickTarget = wrapper.querySelector('.ant-select-selector, .el-select__wrapper, .el-select__tags')
+    const clickTarget = wrapper.querySelector(
+      '.ant-select-selector, .el-select__wrapper, .el-select__tags, .phoenix-select'
+    )
       || wrapper.querySelector('.ant-select-selection')
       || wrapper;
     (clickTarget as HTMLElement).click();
 
     // 2. Wait for dropdown to appear
-    await sleep(200);
+    await sleep(300);
 
     // 3. Find the matching option in the dropdown
     let option: HTMLElement | null = null;
 
-    if (isAntd) {
-      // Ant Design dropdown options
-      const dropdowns = document.querySelectorAll('.ant-select-dropdown:not(.ant-select-dropdown-hidden)');
-      for (const dropdown of dropdowns) {
-        const items = dropdown.querySelectorAll('.ant-select-item-option, .ant-select-item');
+    // Common option selectors for all libraries
+    const dropdownSelectors = [
+      // Ant Design
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option',
+      '.ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item',
+      // Element UI
+      '.el-select-dropdown:not(.is-hidden) .el-select-dropdown__item',
+      '.el-popper:not(.is-hidden) .el-select-dropdown__item',
+      // Phoenix (Beisen)
+      '.phoenix-unmodeled-layer:not([style*="display: none"]) li',
+      '.phoenix-unmodeled-layer li',
+      // Generic
+      '[class*="dropdown"]:not([style*="display: none"]) li',
+      '[class*="menu"]:not([style*="display: none"]) li',
+      '[role="listbox"]:not([style*="display: none"]) [role="option"]',
+    ];
+
+    for (const sel of dropdownSelectors) {
+      try {
+        const items = document.querySelectorAll(sel);
         for (const item of items) {
           const text = item.textContent?.trim() || '';
-          if (text === value || text.includes(value) || value.includes(text)) {
-            option = item as HTMLElement;
-            break;
+          if (!text) continue;
+          // Exact match
+          if (text === value) { option = item as HTMLElement; break; }
+        }
+        if (option) break;
+        // Contains match
+        for (const item of items) {
+          const text = item.textContent?.trim() || '';
+          if (text.includes(value) || value.includes(text)) {
+            option = item as HTMLElement; break;
           }
         }
         if (option) break;
-
-        // Try case-insensitive
+        // Case-insensitive
         for (const item of items) {
           const text = item.textContent?.trim().toLowerCase() || '';
           if (text === value.toLowerCase()) {
-            option = item as HTMLElement;
-            break;
+            option = item as HTMLElement; break;
           }
         }
         if (option) break;
-      }
-    } else if (isElementUI) {
-      const poppers = document.querySelectorAll('.el-select-dropdown, .el-popper:not(.is-hidden)');
-      for (const popper of poppers) {
-        const items = popper.querySelectorAll('.el-select-dropdown__item');
-        for (const item of items) {
-          const text = item.textContent?.trim() || '';
-          if (text === value || text.includes(value) || value.includes(text)) {
-            option = item as HTMLElement;
-            break;
-          }
-        }
-        if (option) break;
-      }
+      } catch { /* invalid selector, continue */ }
     }
 
     // 4. Click the matched option
@@ -276,27 +286,26 @@ async function fillCustomSelect(wrapper: HTMLElement, value: string): Promise<bo
       return true;
     }
 
-    // 5. If no option found, try typing the value (some selects support search)
+    // 5. Try typing into the select's search input + Enter (Phoenix select support)
     const inputEl = wrapper.querySelector('input');
     if (inputEl) {
       setNativeValue(inputEl as HTMLInputElement, value);
-      dispatchEvents(inputEl as HTMLElement);
-      await sleep(300);
+      inputEl.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: value }));
+      await sleep(500);
 
-      // Press Enter to select
+      // Press Enter to select the first match
       inputEl.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13, bubbles: true }));
-      await sleep(100);
+      inputEl.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', keyCode: 13, bubbles: true }));
+      await sleep(200);
       return true;
     }
 
     // 6. Close dropdown by clicking elsewhere
     document.body.click();
     await sleep(100);
-
     return false;
   } catch (e) {
     console.warn('[Filler] Custom select fill failed:', e);
-    // Close dropdown
     document.body.click();
     return false;
   }

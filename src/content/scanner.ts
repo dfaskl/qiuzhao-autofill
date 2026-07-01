@@ -42,9 +42,10 @@ export function scanFormFields(): FieldDescriptor[] {
 // ============================================================
 
 function scanCustomSelects(fields: FieldDescriptor[], seen: Set<HTMLElement>): void {
-  // Ant Design Select: .ant-select without a native <select> inside
-  // Element UI Select: .el-select without a native <select> inside
-  const wrappers = document.querySelectorAll('.ant-select:not(:has(select)), .el-select:not(:has(select))');
+  // Ant Design / Element UI / Phoenix Select components that hide native <select>
+  const wrappers = document.querySelectorAll(
+    '.ant-select:not(:has(select)), .el-select:not(:has(select)), .phoenix-select:not(:has(select))'
+  );
 
   for (const wrapper of wrappers) {
     const el = wrapper as HTMLElement;
@@ -71,9 +72,12 @@ function buildCustomSelectDescriptor(wrapper: HTMLElement): FieldDescriptor | nu
   // Determine library
   const isAntd = wrapper.className.includes('ant-select');
   const isElementUI = wrapper.className.includes('el-select');
+  const isPhoenix = wrapper.className.includes('phoenix-select');
 
   // Resolve label from form item wrapper
-  const formItem = wrapper.closest('.ant-form-item, .el-form-item, .form-item, .form-group');
+  const formItem = wrapper.closest(
+    '.ant-form-item, .el-form-item, .form-item, .form-group, [class*="form-item"]'
+  );
   let label = '';
   if (formItem) {
     const labelEl = formItem.querySelector('.ant-form-item-label, .el-form-item__label, .form-label, label');
@@ -86,7 +90,9 @@ function buildCustomSelectDescriptor(wrapper: HTMLElement): FieldDescriptor | nu
   }
 
   // Get placeholder text
-  const placeholderEl = wrapper.querySelector('.ant-select-selection-placeholder, .el-select__placeholder, .ant-select-selection__placeholder');
+  const placeholderEl = wrapper.querySelector(
+    '.ant-select-selection-placeholder, .el-select__placeholder, .ant-select-selection__placeholder, .phoenix-select__placeHolder'
+  );
   const placeholder = placeholderEl?.textContent?.trim() || null;
 
   // Get current value text
@@ -97,11 +103,11 @@ function buildCustomSelectDescriptor(wrapper: HTMLElement): FieldDescriptor | nu
   let options: string[] = [];
 
   if (isAntd) {
-    // Ant Design renders options in a portal dropdown, or as ant-select-item-option children
-    // v5: options might be in .ant-select-item-option-content or .rc-virtual-list-holder
     options = extractAntdOptions(wrapper);
   } else if (isElementUI) {
     options = extractElementUIOptions(wrapper);
+  } else if (isPhoenix) {
+    options = extractPhoenixOptions(wrapper);
   }
 
   // If we have a current value, include it in options
@@ -191,6 +197,43 @@ function extractElementUIOptions(wrapper: HTMLElement): string[] {
     for (const item of items) {
       const text = item.textContent?.trim();
       if (text && !options.includes(text)) options.push(text);
+    }
+  }
+
+  return options;
+}
+
+function extractPhoenixOptions(_wrapper: HTMLElement): string[] {
+  const options: string[] = [];
+
+  // Phoenix select renders options in a portal with class phoenix-unmodeled-layer__content
+  // Try to find any visible dropdown layers
+  const layers = document.querySelectorAll('.phoenix-unmodeled-layer__content');
+  for (const layer of layers) {
+    // Look for option-like elements inside the layer
+    const items = layer.querySelectorAll(
+      '[class*="option"], [class*="item"], [class*="menu-item"], li, .phoenix-select__option'
+    );
+    for (const item of items) {
+      const text = item.textContent?.trim();
+      if (text && !options.includes(text) && text.length < 200) {
+        options.push(text);
+      }
+    }
+  }
+
+  // Also check fixed/sticky positioned dropdown menus (common for Phoenix)
+  const dropdowns = document.querySelectorAll('[class*="dropdown"], [class*="menu"], [class*="popper"], [class*="popup"]');
+  for (const dropdown of dropdowns) {
+    const style = window.getComputedStyle(dropdown);
+    if (style.position === 'fixed' || style.position === 'absolute') {
+      const items = dropdown.querySelectorAll('li, [class*="item"], [class*="option"]');
+      for (const item of items) {
+        const text = item.textContent?.trim();
+        if (text && !options.includes(text) && text.length < 100 && !text.includes('{{')) {
+          options.push(text);
+        }
+      }
     }
   }
 
