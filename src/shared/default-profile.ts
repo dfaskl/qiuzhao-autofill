@@ -41,7 +41,8 @@ export const DEFAULT_PROFILE: Profile = {
     personalWebsite: null,
   },
   education: [],
-  experience: [],
+  internships: [],
+  projects: [],
   other: {
     languages: [],
     professionalSkills: [],

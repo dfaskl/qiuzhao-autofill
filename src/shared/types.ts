@@ -7,7 +7,8 @@ export interface Profile {
   lastModified: string; // ISO 8601
   basic: BasicInfo;
   education: EducationEntry[];
-  experience: ExperienceEntry[];
+  internships: InternshipEntry[];
+  projects: ProjectEntry[];
   other: OtherInfo;
   customFields: Record<string, string>; // 用户自定义字段，如 "籍贯": "浙江杭州"
 }
@@ -88,9 +89,8 @@ export interface EducationEntry {
   campusActivities: string | null;
 }
 
-export interface ExperienceEntry {
+export interface InternshipEntry {
   id: string;
-  type: 'internship' | 'fulltime' | 'project' | null;
   companyName: string | null;
   companyIndustry: string | null;
   department: string | null;
@@ -105,6 +105,18 @@ export interface ExperienceEntry {
   referencePosition: string | null;
   salaryBeforeTax: string | null;
   reasonForLeaving: string | null;
+}
+
+export interface ProjectEntry {
+  id: string;
+  name: string | null;
+  role: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  description: string | null;
+  achievements: string | null;
+  technologies: string[];
+  url: string | null;
 }
 
 export interface OtherInfo {

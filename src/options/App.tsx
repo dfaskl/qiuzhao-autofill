@@ -4,16 +4,18 @@ import { DEFAULT_PROFILE } from '../shared/default-profile';
 import BasicInfo from './pages/BasicInfo';
 import Education from './pages/Education';
 import Experience from './pages/Experience';
+import Projects from './pages/Projects';
 import Other from './pages/Other';
 import Settings from './pages/Settings';
 import JsonImportExport from './components/JsonImportExport';
 
-type Tab = 'basic' | 'education' | 'experience' | 'other' | 'settings';
+type Tab = 'basic' | 'education' | 'internships' | 'projects' | 'other' | 'settings';
 
 const TABS: { key: Tab; label: string; emoji: string }[] = [
   { key: 'basic', label: '基本信息', emoji: '👤' },
   { key: 'education', label: '教育背景', emoji: '🎓' },
-  { key: 'experience', label: '实习/工作经历', emoji: '💼' },
+  { key: 'internships', label: '实习经历', emoji: '💼' },
+  { key: 'projects', label: '项目经历', emoji: '🚀' },
   { key: 'other', label: '其他信息', emoji: '📋' },
   { key: 'settings', label: '大模型设置', emoji: '🤖' },
 ];
@@ -111,8 +113,11 @@ const App: React.FC = () => {
         {activeTab === 'education' && (
           <Education profile={profile} onUpdate={handleProfileUpdate} />
         )}
-        {activeTab === 'experience' && (
+        {activeTab === 'internships' && (
           <Experience profile={profile} onUpdate={handleProfileUpdate} />
+        )}
+        {activeTab === 'projects' && (
+          <Projects profile={profile} onUpdate={handleProfileUpdate} />
         )}
         {activeTab === 'other' && (
           <Other profile={profile} onUpdate={handleProfileUpdate} />

@@ -59,7 +59,8 @@ Your task:
   - "专业"/"所学专业" → education[0].major
   - "学历"/"最高学历" → education[0].degree
   - "GPA"/"绩点"/"平均成绩" → education[0].gpa
-  - "实习经历"/"工作经历"/"实习" → use experience entries
+  - "实习经历"/"实习" → use internships[] entries
+  - "项目经历"/"项目经验"/"项目" → use projects[] entries
   - "自我评价"/"个人评价"/"自我介绍" → other.selfEvaluation
   - The profile may contain a "customFields" object with user-defined key-value pairs (e.g. {"籍贯": "浙江杭州", "研究方向": "计算机视觉"}). Check customFields for any field that doesn't match the standard profile keys.
 
