@@ -4,18 +4,35 @@ import type { FieldMatch, FieldDescriptor } from '../shared/types';
  * Fill form fields based on LLM matching results.
  * Handles native HTML inputs and dispatches framework-compatible events.
  */
-export async function fillFields(matches: FieldMatch[], _fields: FieldDescriptor[]): Promise<number> {
+export async function fillFields(matches: FieldMatch[], fields: FieldDescriptor[]): Promise<number> {
   let filledCount = 0;
+
+  // Build a map from fieldId to FieldDescriptor for selector lookup
+  const fieldMap = new Map<string, FieldDescriptor>();
+  for (const f of fields) {
+    fieldMap.set(f.id, f);
+  }
 
   for (const match of matches) {
     try {
-      const elements = findElementsBySelector(match.fieldId);
-      if (elements.length === 0) continue;
+      // Look up the actual DOM selector from the field descriptor
+      const fieldDesc = fieldMap.get(match.fieldId);
+      if (!fieldDesc) {
+        console.warn(`[Filler] No field descriptor found for match: ${match.fieldId}`);
+        continue;
+      }
+
+      const elements = findElementsBySelector(fieldDesc.domSelector);
+      if (elements.length === 0) {
+        console.warn(`[Filler] Element not found for field "${fieldDesc.label}", selector: ${fieldDesc.domSelector}`);
+        continue;
+      }
 
       for (const element of elements) {
         const filled = await fillSingleField(element, match.value);
         if (filled) {
           filledCount++;
+          console.log(`[Filler] Filled "${fieldDesc.label}" = "${match.value}" (${match.profileKey})`);
           break; // Only count once per match
         }
       }
